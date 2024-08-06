@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Add } from '@mui/icons-material'
+import { Add, Restore } from '@mui/icons-material'
 import { Button, Grid, Typography } from '@mui/material'
 import { ActionInput } from '../../../schema'
 import DynamicActionForm, {
@@ -17,10 +17,11 @@ export type UniversalKeyActionsFormProps = {
   onChange: (value: Array<ActionInput>) => void
 
   showList?: boolean
-  editActionId?: string
+  actionType?: string
   onChipClick?: (action: ActionInput) => void
 
   disablePortal?: boolean
+  setShowNextTooltip?: (bool: boolean) => void
 }
 
 const query = gql`
@@ -42,7 +43,7 @@ export default function UniversalKeyActionsForm(
   props: UniversalKeyActionsFormProps,
 ): React.ReactNode {
   const [currentAction, setCurrentAction] = useState<FormValue>(
-    props.editActionId ? getAction(props.value, props.editActionId) : null,
+    props.actionType ? getAction(props.value, props.actionType) : null,
   )
   const [addError, setAddError] = useState<CombinedError | null>(null)
   const valClient = useClient()
@@ -50,10 +51,20 @@ export default function UniversalKeyActionsForm(
   let actions = props.value
 
   useEffect(() => {
-    if (props.editActionId) {
-      setCurrentAction(getAction(props.value, props.editActionId))
+    if (props.actionType) {
+      setCurrentAction(getAction(props.value, props.actionType))
     }
-  }, [props.editActionId])
+  }, [props.actionType])
+
+  useEffect(() => {
+    if (currentAction && props.setShowNextTooltip) {
+      props.setShowNextTooltip(true)
+    }
+  }, [currentAction])
+
+  const destError = errs.getErrorByPath('actionInputValidate.input.dest.type')
+  const staticErrors = errs.getErrorMap('actionInputValidate.input.dest.args')
+  const dynamicErrors = errs.getErrorMap('actionInputValidate.input.params')
 
   return (
     <Grid item xs={12} container spacing={2}>
@@ -75,27 +86,13 @@ export default function UniversalKeyActionsForm(
           disablePortal={props.disablePortal}
           value={currentAction}
           onChange={setCurrentAction}
-          destTypeError={errs.getErrorByPath(
-            'actionInputValidate.input.dest.type',
-          )}
-          staticParamErrors={errs.getErrorMap(
-            'actionInputValidate.input.dest.args',
-          )}
-          dynamicParamErrors={errs.getErrorMap(
-            'actionInputValidate.input.params',
-          )}
+          destTypeError={destError}
+          staticParamErrors={staticErrors}
+          dynamicParamErrors={dynamicErrors}
         />
+      </Grid>
 
-        {errs.hasErrors() && (
-          <Grid item xs={12}>
-            {errs.remainingLegacy().map((e) => (
-              <Typography key={e.message} color='error'>
-                {e.message}
-              </Typography>
-            ))}
-          </Grid>
-        )}
-
+      {currentAction?.destType && (
         <Grid
           item
           xs={12}
@@ -105,17 +102,37 @@ export default function UniversalKeyActionsForm(
           }}
         >
           <Button
-            fullWidth
-            startIcon={<Add />}
+            startIcon={<Restore />}
             variant='contained'
             color='secondary'
-            sx={{ height: 'fit-content' }}
+            onClick={() => {
+              setCurrentAction(null)
+              if (props.onChipClick) {
+                props.onChipClick({
+                  dest: { type: '', args: {} },
+                  params: {},
+                })
+              }
+              if (props.setShowNextTooltip) {
+                props.setShowNextTooltip(false)
+              }
+            }}
+            sx={{ width: '30%', mr: 2 }}
+          >
+            Reset
+          </Button>
+          <Button
+            type='button'
+            variant='contained'
+            color='secondary'
+            fullWidth
+            startIcon={<Add />}
             onClick={() => {
               const input = valueToActionInput(currentAction)
 
-              if (props.editActionId !== '') {
+              if (props.actionType !== '') {
                 actions = props.value.filter(
-                  (v) => v.dest.type !== props.editActionId,
+                  (v) => v.dest.type !== props.actionType,
                 )
               }
 
@@ -135,6 +152,7 @@ export default function UniversalKeyActionsForm(
                 return
               }
 
+              // validating input of action
               setAddError(null)
               valClient
                 .query(query, { input })
@@ -147,6 +165,10 @@ export default function UniversalKeyActionsForm(
 
                   // clear the current action
                   setCurrentAction(null)
+                  if (props.setShowNextTooltip) {
+                    props.setShowNextTooltip(false)
+                  }
+
                   props.onChange(actions.concat(input))
 
                   if (props.onChipClick) {
@@ -158,10 +180,20 @@ export default function UniversalKeyActionsForm(
                 })
             }}
           >
-            {props.editActionId ? 'Save Action' : 'Add Action'}
+            {props.actionType ? 'Save Action' : 'Add Action'}
           </Button>
         </Grid>
-      </Grid>
+      )}
+
+      {errs.hasErrors() && (
+        <Grid item xs={12}>
+          {errs.remainingLegacy().map((err) => (
+            <Typography key={err.message} color='error'>
+              {err.message}
+            </Typography>
+          ))}
+        </Grid>
+      )}
     </Grid>
   )
 }
